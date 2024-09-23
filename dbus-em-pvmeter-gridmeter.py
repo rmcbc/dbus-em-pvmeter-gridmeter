@@ -23,14 +23,16 @@ sys.path.insert(1, os.path.join(os.path.dirname(__file__), '/opt/victronenergy/d
 from vedbus import VeDbusService, VeDbusItemImport
 
 
-class DbusShelly3emService:
-  def __init__(self, paths, productname='Gridmeter 3em+goe+mp2', connection='Shelly EM HTTP JSON service'):
+class DbusShellyEMService:
+
+  def __init__(self, paths, productname='Gridmeter em+goe+mp2', connection='Shelly EM HTTP JSON service'):
+  
     config = self._getConfig()
     deviceinstance = int(config['DEFAULT']['DeviceInstance'])
     customname = config['DEFAULT']['CustomName']
     role = config['DEFAULT']['Role']
-
     allowed_roles = ['pvinverter','grid']
+
     if role in allowed_roles:
         servicename = 'com.victronenergy.' + role
     else:
@@ -150,7 +152,6 @@ class DbusShelly3emService:
     
     return meter_data
  
- 
   def _signOfLife(self):
     logging.info("--- Start: sign of life ---")
     logging.info("Last _update() call: %s" % (self._lastUpdate))
@@ -194,32 +195,27 @@ class DbusShelly3emService:
       except KeyError:
         eMeter = 0
        
+      try:
+        acLine = config['DEFAULT']['Line']
+      except KeyError:
+        acLine = "L1"
+
       #send data to DBus
-      self._dbusservice['/Ac/L1/Voltage'] = meter_data['emeters'][eMeter]['voltage']
-      self._dbusservice['/Ac/L2/Voltage'] = 0
-      self._dbusservice['/Ac/L3/Voltage'] = 0
-      self._dbusservice['/Ac/L1/Current'] = meter_data['emeters'][eMeter]['current']
-      self._dbusservice['/Ac/L2/Current'] = 0
-      self._dbusservice['/Ac/L3/Current'] = 0
-      self._dbusservice['/Ac/L1/Power'] = self._getCombinedPower(meter_data['emeters'][eMeter]['power'], '/Ac/L1/Power', True)
-      self._dbusservice['/Ac/L2/Power'] = 0
-      self._dbusservice['/Ac/L3/Power'] = 0
-      self._dbusservice['/Ac/Power'] = self._dbusservice['/Ac/L1/Power']
-      self._dbusservice['/Ac/L1/Energy/Forward'] = (meter_data['emeters'][eMeter]['total']/1000)
-      self._dbusservice['/Ac/L2/Energy/Forward'] = 0
-      self._dbusservice['/Ac/L3/Energy/Forward'] = 0
-      self._dbusservice['/Ac/L1/Energy/Reverse'] = (meter_data['emeters'][eMeter]['total_returned']/1000) 
-      self._dbusservice['/Ac/L2/Energy/Reverse'] = 0 
-      self._dbusservice['/Ac/L3/Energy/Reverse'] = 0
+      self._dbusservice['/Ac/%s/Voltage' % acLine] = meter_data['emeters'][eMeter]['voltage']
+      self._dbusservice['/Ac/%s/Current' % acLine] = meter_data['emeters'][eMeter]['power']/meter_data['emeters'][eMeter]['voltage']
+
+      self._dbusservice['/Ac/%s/Power' % acLine] = self._getCombinedPower(meter_data['emeters'][eMeter]['power'], '/Ac/%s/Power' % acLine, True)
       
-      # New Version - from xris99
+      self._dbusservice['/Ac/%s/Energy/Forward' % acLine] = (meter_data['emeters'][eMeter]['total']/1000)
+      self._dbusservice['/Ac/%s/Energy/Reverse' % acLine] = (meter_data['emeters'][eMeter]['total_returned']/1000) 
+
       #Calc = 60min * 60 sec / 0.500 (refresh interval of 500ms) * 1000
       if (self._dbusservice['/Ac/Power'] > 0):
            self._dbusservice['/Ac/Energy/Forward'] = self._dbusservice['/Ac/Energy/Forward'] + (self._dbusservice['/Ac/Power']/(60*60/0.5*1000))            
+
       if (self._dbusservice['/Ac/Power'] < 0):
            self._dbusservice['/Ac/Energy/Reverse'] = self._dbusservice['/Ac/Energy/Reverse'] + (self._dbusservice['/Ac/Power']*-1/(60*60/0.5*1000))
 
-      
       #logging
       logging.debug("House Consumption (/Ac/Power): %s" % (self._dbusservice['/Ac/Power']))
       logging.debug("House Forward (/Ac/Energy/Forward): %s" % (self._dbusservice['/Ac/Energy/Forward']))
@@ -231,13 +227,13 @@ class DbusShelly3emService:
 
       #update lastupdate vars
       self._lastUpdate = time.time()
+
     except (ValueError, requests.exceptions.ConnectionError, requests.exceptions.Timeout, ConnectionError) as e:
        logging.critical('Error getting data from Shelly - check network or Shelly status. Setting power values to 0. Details: %s', e, exc_info=e)       
-       self._dbusservice['/Ac/L1/Power'] = 0                                       
-       self._dbusservice['/Ac/L2/Power'] = 0                                       
-       self._dbusservice['/Ac/L3/Power'] = 0
-       self._dbusservice['/Ac/Power'] = 0
+       self._dbusservice['/Ac/%s/Power' % acLine] = 0                                       
+       #self._dbusservice['/Ac/Power'] = 0
        self._dbusservice['/UpdateIndex'] = (self._dbusservice['/UpdateIndex'] + 1 ) % 256        
+
     except Exception as e:
        logging.critical('Error at %s', '_update', exc_info=e)
        
@@ -247,9 +243,6 @@ class DbusShelly3emService:
   def _handlechangedvalue(self, path, value):
     logging.debug("someone else updated %s to %s" % (path, value))
     return True # accept the change
-
-
-
 
 def getLogLevel():
   config = configparser.ConfigParser()
@@ -273,11 +266,21 @@ def main():
                                 logging.FileHandler("%s/current.log" % (os.path.dirname(os.path.realpath(__file__)))),
                                 logging.StreamHandler()
                             ])
- 
+
+  config = configparser.ConfigParser()
+  config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
+
+  try:
+    acLine = config['DEFAULT']['Line']
+
+  except KeyError:
+    acLine = "L1"
+
   try:
       logging.info("Start");
   
       from dbus.mainloop.glib import DBusGMainLoop
+    
       # Have a mainloop, so we can send/receive asynchronous calls to and from dbus
       DBusGMainLoop(set_as_default=True)
      
@@ -288,38 +291,28 @@ def main():
       _v = lambda p, v: (str(round(v, 1)) + ' V')   
      
       #start our main-service
-      pvac_output = DbusShelly3emService(
+      pvac_output = DbusShellyEMService(
         paths={
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh}, # energy bought from the grid
           '/Ac/Energy/Reverse': {'initial': 0, 'textformat': _kwh}, # energy sold to the grid
           '/Ac/Power': {'initial': 0, 'textformat': _w},
           
-          '/Ac/Current': {'initial': 0, 'textformat': _a},
-          '/Ac/Voltage': {'initial': 0, 'textformat': _v},
-          
-          '/Ac/L1/Voltage': {'initial': 0, 'textformat': _v},
-          '/Ac/L2/Voltage': {'initial': 0, 'textformat': _v},
-          '/Ac/L3/Voltage': {'initial': 0, 'textformat': _v},
-          '/Ac/L1/Current': {'initial': 0, 'textformat': _a},
-          '/Ac/L2/Current': {'initial': 0, 'textformat': _a},
-          '/Ac/L3/Current': {'initial': 0, 'textformat': _a},
-          '/Ac/L1/Power': {'initial': 0, 'textformat': _w},
-          '/Ac/L2/Power': {'initial': 0, 'textformat': _w},
-          '/Ac/L3/Power': {'initial': 0, 'textformat': _w},
-          '/Ac/L1/Energy/Forward': {'initial': 0, 'textformat': _kwh},
-          '/Ac/L2/Energy/Forward': {'initial': 0, 'textformat': _kwh},
-          '/Ac/L3/Energy/Forward': {'initial': 0, 'textformat': _kwh},
-          '/Ac/L1/Energy/Reverse': {'initial': 0, 'textformat': _kwh},
-          '/Ac/L2/Energy/Reverse': {'initial': 0, 'textformat': _kwh},
-          '/Ac/L3/Energy/Reverse': {'initial': 0, 'textformat': _kwh},
+          '/Ac/%s/Voltage' % acLine: {'initial': 0, 'textformat': _v},
+          '/Ac/%s/Current' % acLine: {'initial': 0, 'textformat': _a},
+          '/Ac/%s/Power' % acLine: {'initial': 0, 'textformat': _w},
+          '/Ac/%s/Energy/Forward' % acLine: {'initial': 0, 'textformat': _kwh},
+          '/Ac/%s/Energy/Reverse' % acLine: {'initial': 0, 'textformat': _kwh},
         })
      
       logging.info('Connected to dbus, and switching over to gobject.MainLoop() (= event based)')
       mainloop = gobject.MainLoop()
-      mainloop.run()            
+      mainloop.run()
+
   except (ValueError, requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
     logging.critical('Error in main type %s', str(e))
+
   except Exception as e:
     logging.critical('Error at %s', 'main', exc_info=e)
+
 if __name__ == "__main__":
   main()
