@@ -1,0 +1,68 @@
+{
+    "wifi_sta": {
+        "connected": true,
+        "ssid": "wifi",
+        "ip": "192.168.1.78",
+        "rssi": -60
+    },
+    "cloud": {
+        "enabled": false,
+        "connected": false
+    },
+    "mqtt": {
+        "connected": true
+    },
+    "time": "11:16",
+    "unixtime": 1727086582,
+    "serial": 30801,
+    "has_update": false,
+    "mac": "3494547BB492",
+    "cfg_changed_cnt": 0,
+    "actions_stats": {
+        "skipped": 0
+    },
+    "relays": [
+        {
+            "ison": false,
+            "has_timer": false,
+            "timer_started": 0,
+            "timer_duration": 0,
+            "timer_remaining": 0,
+            "overpower": false,
+            "is_valid": true,
+            "source": "input"
+        }
+    ],
+    "emeters": [
+        {
+            "power": 2.34,
+            "reactive": 0.00,
+            "pf": 0.00,
+            "voltage": 238.60,
+            "is_valid": true,
+            "total": 812603.0,
+            "total_returned": 0.0
+        },
+        {
+            "power": 0.00,
+            "reactive": 0.00,
+            "pf": 0.00,
+            "voltage": 238.60,
+            "is_valid": true,
+            "total": 0.0,
+            "total_returned": 0.0
+        }
+    ],
+    "update": {
+        "status": "idle",
+        "has_update": false,
+        "new_version": "20230913-114150/v1.14.0-gcb84623",
+        "old_version": "20230913-114150/v1.14.0-gcb84623",
+        "beta_version": "20231107-164916/v1.14.1-rc1-g0617c15"
+    },
+    "ram_total": 51064,
+    "ram_free": 35620,
+    "fs_size": 233681,
+    "fs_free": 157377,
+    "uptime": 4243483
+}
